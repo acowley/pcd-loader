@@ -1,24 +1,30 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, BangPatterns #-}
 -- |Parser for PCD (point cloud data) files. Also provides a facility
 -- for converting from ASCII to binary formatted point data.
-module PCD.Data where
+module PCD.Data (FieldType(..), unsafeUnwrap, loadAllFields, 
+                 loadXyzw, loadXyz, asciiToBinary) where
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad (when)
-import Data.Attoparsec.Text
+import Data.Attoparsec.Text hiding (I)
 import qualified Data.Attoparsec.Text.Lazy as ATL
+import Data.Text (Text)
 import qualified Data.Text.Lazy.IO as TL
 import qualified Data.Text.IO as T
 import qualified Data.Vector as B
+import qualified Data.Vector.Mutable as BM
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
-import Foreign.Storable (Storable, sizeOf)
+import Foreign.Marshal.Alloc (allocaBytes)
+import Foreign.Ptr (Ptr, castPtr, plusPtr)
+import Foreign.Storable (Storable, sizeOf, peek)
 import System.IO (Handle, openFile, hClose, 
                   IOMode(..), withBinaryFile, hPutBuf, hGetBuf)
 import PCD.Header
 import PCD.Internal.SmallLens
+import PCD.Internal.StorableFieldType
 import PCD.Internal.Types
 
 -- |Read point data using a user-supplied ASCII point parser.
@@ -29,22 +35,24 @@ readAsciiPoints pcd h p = aux <$> TL.hGetContents h
         aux t0 = G.create $
                  do v <- GM.new n
                     let write = GM.write v
-                        go i t
+                        go !i !t
                           | i == n = return v
                           | otherwise = case ATL.parse p t of
-                                          ATL.Done t' pt -> write i pt >> 
-                                                            go (i+1) t'
+                                          ATL.Done !t' !pt -> write i pt >> 
+                                                              go (i+1) t'
                                           ATL.Fail _ _ msg -> error msg
                     go 0 t0
 
 -- |Load points of unknown dimension into a boxed vector with a list
 -- of 'FieldType' as the point representation.
-readAsciiPointsDefault :: Header -> Handle -> IO (B.Vector [FieldType])
-readAsciiPointsDefault pcd h = readAsciiPoints pcd h $ pointParser pcd
+readAsciiPointsDefault :: Header -> Handle -> IO (B.Vector (B.Vector FieldType))
+readAsciiPointsDefault pcd h = readAsciiPoints pcd h $ 
+                               B.fromList <$> pointParser pcd
 
 -- |Read back 'Storable' points saved as binary data.
-readBinPoints :: forall a. Storable a => Header -> Handle -> IO (Either String (Vector a))
-readBinPoints pcd h
+readHomogenousBinaryPoints :: forall a. Storable a => 
+                              Header -> Handle -> IO (Either String (Vector a))
+readHomogenousBinaryPoints pcd h
   | ptSize /= sz = return . Left $ 
                    "Deserialization type is not the same size as the points "++
                    "described by this file. The PCD file dicates "++
@@ -66,7 +74,7 @@ readPointData :: Storable a =>
                  IO (Either String (Vector a))
 readPointData hd h pa 
   | hd^.format == ASCII = readAsciiPoints hd h pa >>= return . Right
-  | otherwise = readBinPoints hd h
+  | otherwise = readHomogenousBinaryPoints hd h
 
 -- |Parse 3D points serialized in ASCII.
 readXYZ_ascii :: Fractional a => ATL.Parser (V3 a)
@@ -92,25 +100,24 @@ saveBinaryPcd outputFile pcd pts =
      withBinaryFile outputFile AppendMode $ \h ->
        V.unsafeWith pts (flip (hPutBuf h) sz)
 
--- |Convert the single-precision floating point XYZ or XYZW (where
--- \"W\" may be an RGB triple encoded as a single float) points in an
--- ASCII PCD to a binary PCD file.
+-- |@asciiToBinary inputFile outputFile@ converts a PCD file from
+-- ASCII to Binary.
 asciiToBinary :: FilePath -> FilePath -> IO ()
 asciiToBinary i o = do h <- openFile i ReadMode
                        (pcdh,_) <- readHeader h
                        pcdh `deepseq` print pcdh
-                       when ((pcdh^.format) /= ASCII)
+                       when (pcdh^.format /= ASCII)
                             (error "Input PCD is already binary!")
-                       case pcdh ^. sizes of
-                         [4,4,4] -> readAsciiPoints pcdh h readXYZ_ascii >>=
-                                    (saveBinaryPcd o pcdh
-                                       :: V.Vector (V3 Float) -> IO ())
-                         [4,4,4,4] -> readAsciiPoints pcdh h readXYZW_ascii >>=
-                                      (saveBinaryPcd o pcdh
-                                         :: V.Vector (V4 Float) -> IO ())
-                         _ -> error $ "Only 32-bit floating point 3D or 4D "++
-                                     "points are supported."
+                       let numBytes = totalBinarySize pcdh
+                       putStrLn $ "Expecting to generate "++show numBytes++" bytes"
+                       v <- readAsciiPoints pcdh h (B.fromList <$> pointParser pcdh)
+                       putStrLn $ "Parsed "++show (B.length v)++" ASCII points"
                        hClose h
+                       T.writeFile o (writeHeader (format .~ Binary $ pcdh))
+                       withBinaryFile o AppendMode $ \h' ->
+                         allocaBytes numBytes $ \ptr ->
+                           pokeBinaryPoints ptr v >>
+                           hPutBuf h' ptr numBytes
 
 -- |Load points stored in a PCD file into a 'Vector'.
 loadPoints :: Storable a => ATL.Parser a -> FilePath -> IO (Vector a)
@@ -134,3 +141,21 @@ loadXyzw :: (Fractional a, Storable a) => FilePath -> IO (Vector (V4 a))
 loadXyzw = loadPoints readXYZW_ascii
 {-# SPECIALIZE loadXyzw :: FilePath -> IO (Vector (V4 Float)) #-}
 {-# SPECIALIZE loadXyzw :: FilePath -> IO (Vector (V4 Double)) #-}
+
+-- |Parse every field of every point in a PCD file. Returns a function
+-- that may be used to project out a named field.
+loadAllFields :: FilePath -> IO (Text -> B.Vector FieldType)
+loadAllFields f = do h <- openFile f ReadMode
+                     (pcdh,_) <- readHeader h
+                     (mkProjector pcdh <$>
+                       if pcdh ^. format == ASCII
+                         then readAsciiPoints pcdh h 
+                                              (B.fromList <$> pointParser pcdh)
+                         else parseBinaryPoints pcdh h)
+                       <* hClose h
+  where mkProjector :: Header -> B.Vector (B.Vector FieldType) -> 
+                       (Text -> B.Vector FieldType)
+        mkProjector h pts = let fieldNames = B.fromList $ h ^. fields
+                            in \name -> maybe B.empty 
+                                              (flip B.map pts . flip (B.!))
+                                              (B.findIndex (name==) fieldNames)

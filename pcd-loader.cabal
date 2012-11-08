@@ -1,5 +1,5 @@
 name:                pcd-loader
-version:             0.1.1.1
+version:             0.1.2.0
 synopsis:            PCD file loader.
 description:         Parser for PCD (point cloud data) formats.  See
                      <http://pointclouds.org/documentation/tutorials/pcd_file_format.php>
@@ -18,7 +18,8 @@ source-repository head
   location: git://github.com/acowley/pcd-loader.git
 
 library
-  exposed-modules:  PCD.Data, PCD.Header, PCD.Internal.Types
+  exposed-modules:  PCD.Data, PCD.Header, PCD.Internal.Types, 
+                    PCD.Internal.StorableFieldType
   other-modules:    PCD.Internal.SmallLens
   ghc-options:      -O2 -Wall
   hs-source-dirs:   src
