@@ -1,5 +1,5 @@
 name:                pcd-loader
-version:             0.1.2.0
+version:             0.2.0
 synopsis:            PCD file loader.
 description:         Parser for PCD (point cloud data) formats.  See
                      <http://pointclouds.org/documentation/tutorials/pcd_file_format.php>
