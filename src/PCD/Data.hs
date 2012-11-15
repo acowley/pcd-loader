@@ -2,7 +2,7 @@
 -- |Parser for PCD (point cloud data) files. Also provides a facility
 -- for converting from ASCII to binary formatted point data.
 module PCD.Data (FieldType(..), unsafeUnwrap, loadAllFields, 
-                 loadXyzw, loadXyz, asciiToBinary) where
+                 loadXyzw, loadXyz, asciiToBinary, saveBinaryPcd) where
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad (when)
