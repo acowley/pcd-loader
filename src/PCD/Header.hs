@@ -90,13 +90,6 @@ sequence' (x:xs) = do !x' <- x
                       !xs' <- sequence' xs
                       return $ x':xs'
 
-
--- |Assemble a parser for points by sequencing together all necessary
--- field parsers.
-pointParser :: Header -> Parser [FieldType]
-pointParser h = sequence' . map (<* skipSpace) $ 
-                zipWith fieldParser (_dimTypes h) (_sizes h)
-
 data Header = Header { _version   :: Text 
                      , _fields    :: [Text]
                      , _sizes     :: [Int]
@@ -108,6 +101,20 @@ data Header = Header { _version   :: Text
                      , _points    :: Integer
                      , _format    :: DataFormat } deriving Show
 makeLenses ''Header
+
+-- |Assemble a parser for points by sequencing together all necessary
+-- field parsers.
+pointParser :: Header -> Parser [FieldType]
+pointParser h = sequence' . map (<* skipSpace) $ 
+                zipWith fieldParser (_dimTypes h) (_sizes h)
+
+-- |Create a 'Header' based on an existing one that keeps only the
+-- fields whose names pass the supplied predicate.
+filterFields :: (Text -> Bool) -> Header -> Header
+filterFields f h = h % (fields %~ keep) . (sizes %~ keep)
+                     . (dimTypes %~ keep) . (counts %~ keep)
+  where keepers = map f (_fields h)
+        keep = map snd . filter fst . zip keepers
 
 instance NFData Header where
   rnf (Header !_v !_f !_s !_d !_c !_w !_h !(!_t,!_r) !_p !_fmt) = ()
