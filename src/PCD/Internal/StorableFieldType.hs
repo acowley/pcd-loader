@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables, BangPatterns #-}
-module PCD.Internal.StorableFieldType where
+module PCD.Internal.StorableFieldType (parseBinaryPoints, pokeBinaryPoints) where
 import Control.Applicative
 import Control.Lens ((^.))
 import Control.Monad (void)
@@ -11,6 +11,7 @@ import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.Storable (Storable, peek, poke, sizeOf)
 import System.IO (Handle, hGetBuf)
 
+-- Strict tuple used during parsing.
 data P a = P !FieldType {-# UNPACK #-} !(Ptr a)
 
 -- |'peek' a 'Storable' and advance the source pointer past this
@@ -28,24 +29,29 @@ parseBinaryField U 2 = peekStep TUshort
 parseBinaryField U 4 = peekStep TUint
 parseBinaryField F 4 = peekStep TFloat
 parseBinaryField F 8 = peekStep TDouble
+parseBinaryField t s = error ("Unknown field type: "++show t++" "++show s)
 
 parseBinaryPoints :: Header -> Handle -> IO (B.Vector (B.Vector FieldType))
-parseBinaryPoints pcdh h = B.unsafeFreeze =<<
-                           do v <- BM.new n
-                              let go !i !ptr
-                                    | i == n = return v
-                                    | otherwise = do (pt,ptr') <- pointParser ptr
-                                                     BM.write v i pt
-                                                     go (i+1) ptr'
-                              allocaBytes numBytes $ \ptr -> 
-                                hGetBuf h ptr numBytes >>
-                                go 0 ptr
+parseBinaryPoints pcdh h = 
+  B.unsafeFreeze =<<
+  do v <- BM.new n
+     let go !i !ptr
+           | i == n = return v
+           | otherwise = do (pt,ptr') <- pointParserBin ptr
+                            BM.write v i pt
+                            go (i+1) ptr'
+     allocaBytes numBytes $ \ptr -> 
+       hGetBuf h ptr numBytes >>
+       go 0 ptr
   where n = fromIntegral $ pcdh ^. points
         numBytes = n * sum (zipWith (*) (pcdh^.counts) (pcdh^.sizes))
-        pointParser = parseBinaryFields pcdh
+        pointParserBin = parseBinaryFields pcdh
 
+-- Parse all fields of a single point. A point is represented as a
+-- 'B.Vector' of its fields. The returned 'Ptr' is just after the
+-- parsed point.
 parseBinaryFields :: Header -> Ptr a -> IO (B.Vector FieldType, Ptr a)
-parseBinaryFields h ptr = aux ptr
+parseBinaryFields h = aux
   where numFields = sum (h^.counts)
         aux ptr0 = (\(v,ptr) -> (,) <$> B.unsafeFreeze v <*> pure ptr) =<<
                    do v <- BM.new numFields
