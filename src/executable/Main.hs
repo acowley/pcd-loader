@@ -1,10 +1,22 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
-import Control.Monad (when)
 import System.Environment (getArgs)
-import PCD.Data (asciiToBinary)
+import PCD.Data (asciiToBinary, projectBinaryFields)
+
+data Args = Args { _inputFile  :: FilePath
+                 , _outputFile :: FilePath
+                 , _justXyz    :: Bool }
+
+parseArgs :: [String] -> Maybe Args
+parseArgs ["-xyz", a, b] = Just $ Args a b True
+parseArgs [a,b] = Just $ Args a b False
+parseArgs _ = Nothing
+
+usage :: IO ()
+usage = do putStrLn "Usage: pcd2bin [-xyz] asciiPcd outputBinaryFile"
+           putStrLn "- The '-xyz' option restricts output to those fields."
 
 main :: IO ()
-main = do args@(~[inputFile, outputFile]) <- getArgs
-          when (length args /= 2)
-               (error "Usage: pcd2bin asciiPcd outputBinaryFile")
-          asciiToBinary inputFile outputFile 
+main = getArgs >>= maybe usage aux . parseArgs
+  where aux (Args a b False) = asciiToBinary a b
+        aux (Args a b True) = projectBinaryFields ["x","y","z"] a b

@@ -2,7 +2,8 @@
 -- |Parser for PCD (point cloud data) files. Also provides a facility
 -- for converting from ASCII to binary formatted point data.
 module PCD.Data (FieldType(..), unsafeUnwrap, loadAllFields, 
-                 loadXyzw, loadXyz, asciiToBinary, saveBinaryPcd) where
+                 loadXyzw, loadXyz, asciiToBinary, saveBinaryPcd, 
+                 projectBinaryFields) where
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad (when)
@@ -12,14 +13,12 @@ import Data.Text (Text)
 import qualified Data.Text.Lazy.IO as TL
 import qualified Data.Text.IO as T
 import qualified Data.Vector as B
-import qualified Data.Vector.Mutable as BM
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Generic.Mutable as GM
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as VM
 import Foreign.Marshal.Alloc (allocaBytes)
-import Foreign.Ptr (Ptr, castPtr, plusPtr)
-import Foreign.Storable (Storable, sizeOf, peek)
+import Foreign.Storable (Storable, sizeOf)
 import System.IO (Handle, openFile, hClose, 
                   IOMode(..), withBinaryFile, hPutBuf, hGetBuf)
 import PCD.Header
@@ -110,7 +109,7 @@ asciiToBinary i o = do h <- openFile i ReadMode
                             (error "Input PCD is already binary!")
                        let numBytes = totalBinarySize pcdh
                        putStrLn $ "Expecting to generate "++show numBytes++" bytes"
-                       v <- readAsciiPoints pcdh h (B.fromList <$> pointParser pcdh)
+                       v <- readAsciiPointsDefault pcdh h
                        putStrLn $ "Parsed "++show (B.length v)++" ASCII points"
                        hClose h
                        T.writeFile o (writeHeader (format .~ Binary $ pcdh))
@@ -119,7 +118,31 @@ asciiToBinary i o = do h <- openFile i ReadMode
                            pokeBinaryPoints ptr v >>
                            hPutBuf h' ptr numBytes
 
--- |Load points stored in a PCD file into a 'Vector'.
+-- |Save a binary PCD file including only the named fields.
+projectBinaryFields :: [Text] -> FilePath -> FilePath -> IO ()
+projectBinaryFields fs i o = 
+  do h <- openFile i ReadMode
+     (pcdh,_) <- readHeader h
+     v <- loadFlexiblePoints pcdh h
+     putStrLn $ "Parsed "++show (B.length v)++" ASCII points"
+     let v' = B.map keep v
+         keepers = B.fromList $ map (`elem` fs) (pcdh ^. fields)
+         keep = B.map snd . B.filter fst . B.zip keepers
+         pcdh' = format .~ Binary $ filterFields (`elem` fs) pcdh
+         numBytes = totalBinarySize pcdh'
+     putStrLn $ "Binary data will occupy "++show numBytes++" bytes"
+     hClose h
+     T.writeFile o (writeHeader pcdh')
+     withBinaryFile o AppendMode $ \h' ->
+       allocaBytes numBytes $ \ptr ->
+         pokeBinaryPoints ptr v' >>
+         hPutBuf h' ptr numBytes
+     return ()
+
+-- |Load points stored in a PCD file into a 'Vector'. This requires a
+-- 'Storable' instance for the type used to represent a point. If the
+-- point is a monotyped collection of fields, consider using
+-- 'Linear.V2.V2' or 'Linear.V3.V3' to represent points.
 loadPoints :: Storable a => ATL.Parser a -> FilePath -> IO (Vector a)
 loadPoints parser pcdFile = do h <- openFile pcdFile ReadMode
                                (pcdh,_) <- readHeader h
@@ -141,6 +164,11 @@ loadXyzw :: (Fractional a, Storable a) => FilePath -> IO (Vector (V4 a))
 loadXyzw = loadPoints readXYZW_ascii
 {-# SPECIALIZE loadXyzw :: FilePath -> IO (Vector (V4 Float)) #-}
 {-# SPECIALIZE loadXyzw :: FilePath -> IO (Vector (V4 Double)) #-}
+
+loadFlexiblePoints :: Header -> Handle -> IO (B.Vector (B.Vector FieldType))
+loadFlexiblePoints pcdh h
+  | pcdh ^. format == Binary = parseBinaryPoints pcdh h
+  | otherwise = readAsciiPointsDefault pcdh h
 
 -- |Parse every field of every point in a PCD file. Returns a function
 -- that may be used to project out a named field.
