@@ -3,7 +3,7 @@
 -- for converting from ASCII to binary formatted point data.
 module PCD.Data (FieldType(..), unsafeUnwrap, loadAllFields, 
                  loadXyzw, loadXyz, asciiToBinary, saveBinaryPcd, 
-                 projectBinaryFields) where
+                 projectBinaryFields, mkSimpleHeader, mkHeaderXYZ) where
 import Control.Applicative
 import Control.DeepSeq
 import Control.Monad (when)

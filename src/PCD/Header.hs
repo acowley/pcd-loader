@@ -38,39 +38,54 @@ data FieldType = TUchar  {-# UNPACK #-}!Word8
                  deriving Show
 
 class PCDType a where
+  -- |Extract a raw Haskell value from the 'FieldType' variant. If you
+  -- know what you've got, this frees from having to pattern match on
+  -- the 'FieldType' constructor. If you're wrong, you'll get an
+  -- exception.
   unsafeUnwrap :: FieldType -> a
+  -- |Associate a 'DimType' and a size (in bytes) for every instance
+  -- of 'PCDType'. The argument to 'fromHaskell' is never evaluated.
+  fromHaskell :: a -> (DimType,Int)
 
 instance PCDType Word8 where
   unsafeUnwrap (TUchar x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Word8"
+  fromHaskell _ = (U,1)
 
 instance PCDType Int8 where
   unsafeUnwrap (TChar x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Int8"
+  fromHaskell _ = (I,1)
 
 instance PCDType Word16 where
   unsafeUnwrap (TUshort x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Word16"
+  fromHaskell _ = (U,2)
 
 instance PCDType Int16 where
   unsafeUnwrap (TShort x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Int16"
+  fromHaskell _ = (I,2)
 
 instance PCDType Word32 where
   unsafeUnwrap (TUint x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Word32"
+  fromHaskell _ = (U,4)
 
 instance PCDType Int32 where
   unsafeUnwrap (TInt x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Int32"
+  fromHaskell _ = (I,4)
 
 instance PCDType Float where
   unsafeUnwrap (TFloat x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Float"
+  fromHaskell _ = (F,4)
 
 instance PCDType Double where
   unsafeUnwrap (TDouble x) = x
   unsafeUnwrap y = error $ "Tried to unwrap "++show y++" as a Double"
+  fromHaskell _ = (F,8)
 
 -- |Construct a parser for a field based on its type and size.
 fieldParser :: DimType -> Int -> Parser FieldType
@@ -101,6 +116,31 @@ data Header = Header { _version   :: Text
                      , _points    :: Integer
                      , _format    :: DataFormat } deriving Show
 makeLenses ''Header
+
+-- |The default PCD version of 0.7.
+defaultVersion :: Text
+defaultVersion = "0.7"
+
+-- |Make a PCD header for a monotyped vector point
+-- type. @mkSimpleHeader fields (type,sz) n@ prepares a 'Header' for
+-- @n@ points with field names @fields@, field type given by @type@,
+-- and field size given by @sz@. Example to save 1000 3D points:
+--
+-- > mkSimpleHeader ["x","y","z"] (F,4) 1000
+mkSimpleHeader :: [Text] -> (DimType,Int) -> Int -> Header
+mkSimpleHeader fields (t,sz) numPts = 
+  Header "0.7" fields (rep sz) (rep t) (rep 1) n 1 (0, Quaternion 1 0) n Binary
+    where numFields = length fields
+          rep = replicate numFields
+          n = fromIntegral numPts
+
+-- |@mkHeaderXYZ sample n@ builds a 'Header' for @n@ points with
+-- fields \"x\", \"y\", and \"z\" of 'DimType' and size (in bytes)
+-- derived from the 'PCDType' instance of @sample@. Example:
+-- 
+-- > mkHeaderXYZ (undefined::Float) 1000
+mkHeaderXYZ :: PCDType a => a -> Int -> Header
+mkHeaderXYZ = mkSimpleHeader ["x","y","z"] . fromHaskell
 
 -- |Assemble a parser for points by sequencing together all necessary
 -- field parsers.
