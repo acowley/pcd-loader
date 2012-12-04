@@ -151,8 +151,8 @@ pointParser h = sequence' . map (<* skipSpace) $
 -- |Create a 'Header' based on an existing one that keeps only the
 -- fields whose names pass the supplied predicate.
 filterFields :: (Text -> Bool) -> Header -> Header
-filterFields f h = h % (fields %~ keep) . (sizes %~ keep)
-                     . (dimTypes %~ keep) . (counts %~ keep)
+filterFields f h = (fields %~ keep) . (sizes %~ keep)
+                 . (dimTypes %~ keep) . (counts %~ keep) $ h
   where keepers = map f (_fields h)
         keep = map snd . filter fst . zip keepers
 
