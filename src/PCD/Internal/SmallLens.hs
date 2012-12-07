@@ -15,7 +15,6 @@ module PCD.Internal.SmallLens ( module Control.Lens.Type
                               , module Control.Lens.IndexedTraversal
                               , module Control.Lens.IndexedSetter
                               , module Control.Lens.Plated
-                              , module Control.Lens.Projection
                               , module Control.Lens.Representable
                               , module Control.Lens.TH
                               , module Control.Lens.Tuple
@@ -36,7 +35,6 @@ import Control.Lens.IndexedLens
 import Control.Lens.IndexedTraversal
 import Control.Lens.IndexedSetter
 import Control.Lens.Plated
-import Control.Lens.Projection
 import Control.Lens.Representable
 import Control.Lens.TH
 import Control.Lens.Tuple
