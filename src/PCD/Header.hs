@@ -5,6 +5,7 @@
 module PCD.Header where
 import Control.Applicative
 import Control.Arrow ((***))
+import Control.Lens (makeLenses, (^.), (%~), (.=), _1, _2, use, Setting)
 import Control.Monad.State
 import Data.Foldable (Foldable, foldMap)
 import Data.Int
@@ -17,7 +18,6 @@ import Data.Word
 import Data.Attoparsec.Text hiding (I)
 import System.IO (Handle)
 import Control.DeepSeq
-import PCD.Internal.SmallLens
 import PCD.Internal.Types
 
 -- |Fields attached to a point may be signed integers (I), unsigned

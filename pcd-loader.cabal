@@ -20,7 +20,6 @@ source-repository head
 library
   exposed-modules:  PCD.Data, PCD.Header, PCD.Internal.Types, 
                     PCD.Internal.StorableFieldType
-  other-modules:    PCD.Internal.SmallLens
   ghc-options:      -O2 -Wall
   hs-source-dirs:   src
   build-depends:    base >= 4.6 && < 5, text, mtl, lens, vector, bytestring, 

@@ -6,6 +6,7 @@ module PCD.Data (FieldType(..), unsafeUnwrap, loadAllFields,
                  projectBinaryFields, mkSimpleHeader, mkHeaderXYZ) where
 import Control.Applicative
 import Control.DeepSeq
+import Control.Lens ((.~), (^.))
 import Control.Monad (when)
 import Data.Attoparsec.Text hiding (I)
 import qualified Data.Attoparsec.Text.Lazy as ATL
@@ -22,7 +23,6 @@ import Foreign.Storable (Storable, sizeOf)
 import System.IO (Handle, openFile, hClose, 
                   IOMode(..), withBinaryFile, hPutBuf, hGetBuf)
 import PCD.Header
-import PCD.Internal.SmallLens
 import PCD.Internal.StorableFieldType
 import PCD.Internal.Types
 
