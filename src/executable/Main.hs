@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 import System.Environment (getArgs)
-import PCD.Data (asciiToBinary, projectBinaryFields)
+import PCD.Conversion (asciiToBinary)
+import PCD.Data (projectBinaryFields)
 
 data Args = Args { _inputFile  :: FilePath
                  , _outputFile :: FilePath

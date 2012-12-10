@@ -124,7 +124,8 @@ defaultVersion = "0.7"
 -- |Make a PCD header for a monotyped vector point
 -- type. @mkSimpleHeader fields (type,sz) n@ prepares a 'Header' for
 -- @n@ points with field names @fields@, field type given by @type@,
--- and field size given by @sz@. Example to save 1000 3D points:
+-- and field size given by @sz@. Example to save 1000 3D points using
+-- a single-precision floating point number (4 bytes) for each field:
 --
 -- > mkSimpleHeader ["x","y","z"] (F,4) 1000
 mkSimpleHeader :: [Text] -> (DimType,Int) -> Int -> Header
