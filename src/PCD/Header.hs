@@ -5,7 +5,7 @@
 module PCD.Header where
 import Control.Applicative
 import Control.Arrow ((***))
-import Control.Lens (makeLenses, (^.), (%~), (.=), _1, _2, use, Setting)
+import Control.Lens (makeLenses, (^.), (%~), (.=), _1, _2, use, ASetter)
 import Control.Monad.State
 import Data.Foldable (Foldable, foldMap)
 import Data.Int
@@ -213,7 +213,7 @@ readHeader h = flip execStateT (defaultHeader, Nothing) $
   where nxt :: (MonadState (a,Maybe Text) m, MonadIO m) => m ()
         nxt = liftIO (nextLine h) >>= (_2.=) . Just
         entry :: (MonadState (s,Maybe Text) m, MonadIO m, Functor m) => 
-                 Parser a -> Setting s s a a -> m ()
+                 Parser a -> ASetter s s a a -> m ()
         entry parser field = do use _2 >>= maybe nxt (const (return ()))
                                 Just ln <- use _2
                                 case parseOnly parser ln of
