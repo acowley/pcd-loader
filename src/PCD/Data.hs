@@ -103,8 +103,11 @@ loadPoints :: Storable a => ATL.Parser a -> FilePath -> IO (Vector a)
 loadPoints parser pcdFile = do h <- openFile pcdFile ReadMode
                                (pcdh,_) <- readHeader h
                                r <- pcdh `deepseq` readPointData pcdh h parser
+                               v <- case r of
+                                      Left _ -> return V.empty
+                                      Right v' -> V.length v' `seq` return v'
                                hClose h
-                               return $ either (const V.empty) id r
+                               return v
 
 -- |Read a PCD file consisting of floating point XYZ coordinates for
 -- each point.
